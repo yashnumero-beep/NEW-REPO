@@ -7,7 +7,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 
 const featuredProducts = [
   {
-    id: "1",
+    id: 1,
     name: "Bamboo Toothbrush Set",
     price: 12.99,
     rating: 4.8,
@@ -16,7 +16,7 @@ const featuredProducts = [
     category: "Personal Care",
   },
   {
-    id: "2",
+    id: 2,
     name: "Reusable Water Bottle",
     price: 24.99,
     rating: 4.9,
@@ -25,7 +25,7 @@ const featuredProducts = [
     category: "Lifestyle",
   },
   {
-    id: "3",
+    id: 3,
     name: "Organic Cotton Tote Bag",
     price: 18.99,
     rating: 4.7,
@@ -34,7 +34,7 @@ const featuredProducts = [
     category: "Bags",
   },
   {
-    id: "4",
+    id: 4,
     name: "Eco-Friendly Cleaning Kit",
     price: 29.99,
     rating: 4.6,
@@ -214,7 +214,7 @@ export function HomePage() {
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
               >
-                <ProductCard {...product} />
+              <ProductCard key={product.id} product={product} />
               </motion.div>
             ))}
           </div>
