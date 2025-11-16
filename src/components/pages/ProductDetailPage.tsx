@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom"; // Import Link
 import { Star, ShoppingCart, Heart, Leaf, Package, RefreshCw, Shield, Loader2, PackageCheck, Zap, Droplet } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -18,8 +18,8 @@ interface CarbonBreakdown {
 }
 
 export function ProductDetailPage() {
-  const { id: idFromParams } = useParams<{ id: string }>();
-  const id = idFromParams || ""; // Ensure id is a string
+  // CRITICAL FIX: Alias the 'id' param to 'productId' to avoid scope conflict
+  const { id: productId } = useParams<{ id: string }>();
   
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
@@ -27,9 +27,10 @@ export function ProductDetailPage() {
   const [error, setError] = useState<string | null>(null);
   
   const [quantity, setQuantity] = useState(1);
+  const [selectedImage, setSelectedImage] = useState(0); // Only one image, but keeping for structure
 
   useEffect(() => {
-    if (!id) {
+    if (!productId) {
       setError("No product ID provided.");
       setIsLoading(false);
       return;
@@ -42,8 +43,8 @@ export function ProductDetailPage() {
         
         // Fetch main product and related products in parallel
         const [productData, alternativesData] = await Promise.all([
-          productService.getProductById(id),
-          productService.getEcoAlternatives(id)
+          productService.getProductById(productId),
+          productService.getEcoAlternatives(productId)
         ]);
         
         setProduct(productData);
@@ -58,7 +59,7 @@ export function ProductDetailPage() {
     };
 
     fetchProductData();
-  }, [id]);
+  }, [productId]); // Depend on the aliased productId
 
   // Helper to render eco features
   const renderEcoFeatures = () => {
@@ -152,22 +153,46 @@ export function ProductDetailPage() {
     ? `data:image/jpeg;base64,${product.imageBase64}`
     : ""; // Fallback will be handled by ImageWithFallback
 
+  // Mock images for gallery (since backend only provides one)
+  const productImages = [
+    imageUrl,
+    "https://images.unsplash.com/photo-1760992004120-19b7a726d2c6?w=800",
+    "https://images.unsplash.com/photo-1753370241639-e8596ccbfe0c?w=800",
+    "https://images.unsplash.com/photo-1605615016732-03add3ee505d?w=800"
+  ].filter(img => !!img); // Filter out empty string if no base64 image
+
   return (
     <div className="min-h-screen bg-[#f5f5dc]/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Product Details */}
         <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden mb-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-8">
-            {/* Image */}
+            {/* Images */}
             <div>
               <div className="aspect-square rounded-2xl overflow-hidden mb-4 bg-[#f5f5dc]">
                 <ImageWithFallback
-                  src={imageUrl}
+                  src={productImages[selectedImage]}
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
               </div>
-              {/* Image gallery removed as backend only provides one image */}
+              <div className="grid grid-cols-4 gap-4">
+                {productImages.map((image, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedImage(index)}
+                    className={`aspect-square rounded-xl overflow-hidden border-2 ${
+                      selectedImage === index ? "border-[#2E8B57]" : "border-border"
+                    }`}
+                  >
+                    <ImageWithFallback
+                      src={image}
+                      alt={`${product.name} ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Details */}
@@ -183,7 +208,7 @@ export function ProductDetailPage() {
                 {product.ecoCertified && <Badge variant="secondary">Certified</Badge>}
               </div>
 
-              <h1 className="text-foreground mb-4">{product.name}</h1>
+              <h1 className="text-3xl font-bold text-foreground mb-4">{product.name}</h1>
 
               <div className="flex items-center gap-2 mb-6">
                 <div className="flex items-center gap-1">

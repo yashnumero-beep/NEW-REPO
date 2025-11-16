@@ -1,48 +1,12 @@
-import { ArrowRight, Leaf, Recycle, Calendar, ShoppingBag, Users, TrendingUp } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Leaf, Recycle, Calendar, ShoppingBag, Users, TrendingUp, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { ProductCard } from "../ProductCard";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
-
-const featuredProducts = [
-  {
-    id: 1,
-    name: "Bamboo Toothbrush Set",
-    price: 12.99,
-    rating: 4.8,
-    image: "https://images.unsplash.com/photo-1605615016732-03add3ee505d?w=400",
-    ecoRating: "A" as const,
-    category: "Personal Care",
-  },
-  {
-    id: 2,
-    name: "Reusable Water Bottle",
-    price: 24.99,
-    rating: 4.9,
-    image: "https://images.unsplash.com/photo-1623684194967-48075185a58c?w=400",
-    ecoRating: "A" as const,
-    category: "Lifestyle",
-  },
-  {
-    id: 3,
-    name: "Organic Cotton Tote Bag",
-    price: 18.99,
-    rating: 4.7,
-    image: "https://images.unsplash.com/photo-1712842959473-9a7235e5810c?w=400",
-    ecoRating: "B" as const,
-    category: "Bags",
-  },
-  {
-    id: 4,
-    name: "Eco-Friendly Cleaning Kit",
-    price: 29.99,
-    rating: 4.6,
-    image: "https://images.unsplash.com/photo-1760992004120-19b7a726d2c6?w=400",
-    ecoRating: "A" as const,
-    category: "Home",
-  },
-];
+import { Product } from "../../types/product";
+import * as productService from "../../api/productService";
 
 const highlights = [
   {
@@ -66,6 +30,57 @@ const highlights = [
 ];
 
 export function HomePage() {
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchFeatured = async () => {
+      try {
+        setIsLoading(true);
+        const allProducts = await productService.getAllProducts();
+        // Take the first 4 as "featured"
+        setFeaturedProducts(allProducts.slice(0, 4));
+      } catch (err) {
+        console.error("Failed to fetch featured products:", err);
+        setError("Could not load featured products.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchFeatured();
+  }, []);
+
+  const renderFeaturedProducts = () => {
+    if (isLoading) {
+      return (
+        <div className="col-span-1 sm:col-span-2 lg:col-span-4 flex justify-center items-center min-h-[200px]">
+          <Loader2 className="w-10 h-10 animate-spin text-[#2E8B57]" />
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="col-span-1 sm:col-span-2 lg:col-span-4 text-center text-red-600">
+          {error}
+        </div>
+      );
+    }
+
+    return featuredProducts.map((product, index) => (
+      <motion.div
+        key={product.id}
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ delay: index * 0.1 }}
+      >
+        <ProductCard product={product} />
+      </motion.div>
+    ));
+  };
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -206,17 +221,7 @@ export function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredProducts.map((product, index) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-              <ProductCard key={product.id} product={product} />
-              </motion.div>
-            ))}
+            {renderFeaturedProducts()}
           </div>
         </div>
       </section>

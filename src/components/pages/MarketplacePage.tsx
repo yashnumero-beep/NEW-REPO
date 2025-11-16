@@ -23,14 +23,17 @@ export function MarketplacePage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filter states
-  const [priceRange, setPriceRange] = useState([0, 100]); // Note: Backend does not support price filter yet. This is UI-only for now.
+  const [priceRange, setPriceRange] = useState([0, 500]); // Note: Backend does not support price filter.
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
+  
+  // FIX: Use `string | undefined` for state. `undefined` will show the placeholder.
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
+  
   const [maxCarbon, setMaxCarbon] = useState("");
   const [minRating, setMinRating] = useState("");
   const [isEcoCertified, setIsEcoCertified] = useState(false);
   const [isRecyclable, setIsRecyclable] = useState(false);
-  const [sortBy, setSortBy] = useState("popular"); // Note: Backend does not support sorting yet.
+  const [sortBy, setSortBy] = useState("popular"); // Note: Backend does not support sorting.
 
   // Fetch all products on initial load
   useEffect(() => {
@@ -55,7 +58,7 @@ export function MarketplacePage() {
     try {
       setIsLoading(true);
       setError(null);
-
+      
       // Handle search query separately
       if (searchQuery.trim()) {
         const data = await productService.searchProducts(searchQuery.trim());
@@ -65,24 +68,15 @@ export function MarketplacePage() {
 
       // Handle advanced filters
       const filter: ProductFilter = {
-        category: selectedCategory || null,
-        ecoCertified: isEcoCertified || null,
-        maxCarbonImpact: maxCarbon ? parseFloat(maxCarbon) : null,
-        minEcoRating: minRating ? parseFloat(minRating) : null,
-        recyclable: isRecyclable || null,
+        category: selectedCategory || undefined,
+        ecoCertified: isEcoCertified ? true : undefined,
+        maxCarbonImpact: maxCarbon ? parseFloat(maxCarbon) : undefined,
+        minEcoRating: minRating ? parseFloat(minRating) : undefined,
+        recyclable: isRecyclable ? true : undefined,
       };
-
-      // Check if any filter is active
-      const isFilterActive = Object.values(filter).some(val => val !== null && val !== false);
-
-      if (isFilterActive) {
-        const data = await productService.filterProducts(filter);
-        setProducts(data);
-      } else {
-        // If no filters are active (and no search), fetch all products
-        const data = await productService.getAllProducts();
-        setProducts(data);
-      }
+      
+      const data = await productService.filterProducts(filter);
+      setProducts(data);
 
     } catch (err) {
       setError("Failed to apply filters. Please try again.");
@@ -96,11 +90,12 @@ export function MarketplacePage() {
   // Reset all filters and fetch all products
   const handleResetFilters = async () => {
     setSearchQuery("");
-    setSelectedCategory("");
+    setSelectedCategory(undefined); // Reset to undefined
     setMaxCarbon("");
     setMinRating("");
     setIsEcoCertified(false);
     setIsRecyclable(false);
+    setPriceRange([0, 500]);
     
     // Refetch all products
     try {
@@ -143,7 +138,21 @@ export function MarketplacePage() {
       );
     }
 
-    return products.map((product) => (
+    // Client-side price filtering (since backend doesn't support it)
+    const filteredByPrice = products.filter(
+      p => p.price >= priceRange[0] && p.price <= priceRange[1]
+    );
+
+    if (filteredByPrice.length === 0) {
+       return (
+        <div className="col-span-1 sm:col-span-2 lg:col-span-3 text-center text-muted-foreground bg-white rounded-2xl p-12 shadow-sm border border-border">
+          <h3 className="text-lg font-semibold mb-2 text-foreground">No Products Found</h3>
+          <p>No products match the current price range of ${priceRange[0]} - ${priceRange[1]}.</p>
+        </div>
+      );
+    }
+
+    return filteredByPrice.map((product) => (
       <ProductCard key={product.id} product={product} />
     ));
   };
@@ -243,12 +252,27 @@ export function MarketplacePage() {
               {/* Categories */}
               <div className="mb-6">
                 <Label className="mb-3 block">Category</Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                {/* FIX: The value prop on Select is bound to `selectedCategory`.
+                  `onValueChange` updates that state.
+                  `undefined` value shows the placeholder.
+                */}
+                <Select 
+                  value={selectedCategory} 
+                  onValueChange={setSelectedCategory}
+                >
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Categories</SelectItem>
+                    {/* FIX: Removed the <SelectItem value="">
+                      The placeholder is handled by SelectValue.
+                      To clear the filter, the user can click "Reset".
+                      Or, we can add a "Clear" item with a non-empty value.
+                      Let's add an "All Categories" item that sets value to `undefined`.
+                    */}
+                    <SelectItem value="all" onClick={() => setSelectedCategory(undefined)}>
+                      All Categories
+                    </SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
@@ -336,7 +360,7 @@ export function MarketplacePage() {
             </div>
 
             {/* Load More (Pagination placeholder) */}
-            {!isLoading && products.length > 0 && (
+            {!isLoading && products.length > 11 && ( // Only show if more than 12
               <div className="text-center mt-12">
                 <Button
                   variant="outline"

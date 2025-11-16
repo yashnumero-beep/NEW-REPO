@@ -13,7 +13,6 @@ import {
   Trash2,
   Edit,
   Plus,
-  Image as ImageIcon,
   X
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
@@ -26,6 +25,7 @@ import { Textarea } from "../ui/textarea";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
+import { ImageWithFallback } from "../figma/ImageWithFallback"; // Import ImageWithFallback
 
 // --- Mock Data (can be replaced by API calls) ---
 const salesData = [
@@ -50,14 +50,14 @@ const categories = [
   "Furniture", "Beauty", "Sports", "Home & Garden", "Automotive"
 ];
 
-// --- Reusable Form Modal ---
+// --- Form Data Type ---
 type ProductFormData = {
   id?: number;
   name: string;
   description: string;
   price: string;
   stockQuantity: string;
-  category: string;
+  category: string; // FIX: Use string here, can be "" for placeholder
   brand: string;
   weightKg: string;
   carbonImpact: string;
@@ -67,7 +67,7 @@ type ProductFormData = {
   biodegradable: boolean;
   renewableEnergyUsed: boolean;
   shippingCarbonOffset: boolean;
-  imageBase64?: string | null; // Add this line
+  imageBase64?: string | null; // For previewing existing image
 };
 
 const emptyForm: ProductFormData = {
@@ -75,7 +75,7 @@ const emptyForm: ProductFormData = {
   description: "",
   price: "",
   stockQuantity: "0",
-  category: "",
+  category: "", // FIX: Default to empty string
   brand: "",
   weightKg: "",
   carbonImpact: "", // Will be auto-calculated if empty
@@ -85,31 +85,33 @@ const emptyForm: ProductFormData = {
   biodegradable: false,
   renewableEnergyUsed: false,
   shippingCarbonOffset: false,
-  imageBase64: null, // Add this line
+  imageBase64: null,
 };
 
+// --- Reusable Form Modal Component ---
 function ProductFormModal({
   isOpen,
   onClose,
   onSubmit,
-  initialData = emptyForm,
+  initialData,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: ProductFormData, file?: File) => void;
-  initialData?: ProductFormData;
+  onSubmit: (data: ProductFormData, file?: File) => Promise<void>; // Make async
+  initialData: ProductFormData;
 }) {
   const [formData, setFormData] = useState<ProductFormData>(initialData);
   const [selectedFile, setSelectedFile] = useState<File | undefined>();
-  const [preview, setPreview] = useState<string | undefined>(
-    initialData.id ? (initialData as any).imageBase64 : undefined
-  );
+  const [preview, setPreview] = useState<string | undefined>(initialData.imageBase64 || undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Reset form when initialData or isOpen changes
     setFormData(initialData);
-    setPreview(initialData.imageBase64 || undefined); // Use the property here
+    setPreview(initialData.imageBase64 || undefined);
     setSelectedFile(undefined);
+    setError(null);
   }, [initialData, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -129,15 +131,32 @@ function ProductFormModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
+      // Create a blob URL for preview
       setPreview(URL.createObjectURL(file));
+    } else {
+      // If file is removed, clear preview
+      setSelectedFile(undefined);
+      setPreview(undefined);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.category) {
+      setError("Please select a category.");
+      return;
+    }
     setIsSubmitting(true);
-    await onSubmit(formData, selectedFile);
-    setIsSubmitting(false);
+    setError(null);
+    try {
+      await onSubmit(formData, selectedFile);
+      onClose(); // Close modal on success
+    } catch (err: any) {
+      console.error("Submission error:", err);
+      setError(err.message || "Failed to save product. Please check console.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -180,7 +199,14 @@ function ProductFormModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="category">Category</Label>
-              <Select name="category" value={formData.category} onValueChange={(val) => handleSelectChange('category', val)}>
+              {/* FIX: Bind value to `formData.category`. 
+                If `formData.category` is "", the placeholder will show.
+              */}
+              <Select 
+                name="category" 
+                value={formData.category || undefined} // Pass undefined for empty string to show placeholder
+                onValueChange={(val) => handleSelectChange('category', val)}
+              >
                 <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent>
                   {categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
@@ -220,7 +246,7 @@ function ProductFormModal({
           {/* Image Preview */}
           {preview && (
             <div className="w-24 h-24 rounded-lg border border-border p-1">
-              <img 
+              <ImageWithFallback
                 src={preview.startsWith('blob:') ? preview : `data:image/jpeg;base64,${preview}`} 
                 alt="Preview" 
                 className="w-full h-full object-cover rounded-md" 
@@ -232,21 +258,34 @@ function ProductFormModal({
           <div>
             <Label className="mb-2 block">Eco Features</Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {['ecoCertified', 'recyclable', 'biodegradable', 'renewableEnergyUsed', 'shippingCarbonOffset'].map(key => (
-                <div key={key} className="flex items-center gap-2">
+              {[
+                { key: 'ecoCertified', label: 'Eco-Certified' },
+                { key: 'recyclable', label: 'Recyclable' },
+                { key: 'biodegradable', label: 'Biodegradable' },
+                { key: 'renewableEnergyUsed', label: 'Renewable Energy' },
+                { key: 'shippingCarbonOffset', label: 'Shipping Offset' },
+              ].map(item => (
+                <div key={item.key} className="flex items-center gap-2">
                   <Checkbox 
-                    id={key} 
-                    name={key} 
-                    checked={formData[key as keyof ProductFormData] as boolean} 
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, [key]: checked }))}
+                    id={item.key} 
+                    name={item.key} 
+                    checked={formData[item.key as keyof ProductFormData] as boolean} 
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, [item.key]: checked }))}
                   />
-                  <Label htmlFor={key} className="font-normal text-muted-foreground capitalize">
-                    {key.replace(/([A-Z])/g, ' $1').replace('eco ', 'Eco-').replace('shipping Carbon Offset', 'Shipping Offset')}
+                  <Label htmlFor={item.key} className="font-normal text-muted-foreground">
+                    {item.label}
                   </Label>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Error Message */}
+          {error && (
+             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
+              {error}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3 pt-4">
@@ -264,7 +303,6 @@ function ProductFormModal({
 
 // --- Login Component ---
 function LoginForm({ onLogin }: { onLogin: (username: string, password: string) => boolean }) {
-  // (Component unchanged from original)
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -288,10 +326,10 @@ function LoginForm({ onLogin }: { onLogin: (username: string, password: string) 
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-foreground mb-2">
+            <Label htmlFor="username" className="block text-sm font-medium text-foreground mb-2">
               Username
-            </label>
-            <input
+            </Label>
+            <Input
               id="username"
               type="text"
               value={username}
@@ -303,10 +341,10 @@ function LoginForm({ onLogin }: { onLogin: (username: string, password: string) 
           </div>
           
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
+            <Label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
               Password
-            </label>
-            <input
+            </Label>
+            <Input
               id="password"
               type="password"
               value={password}
@@ -323,12 +361,12 @@ function LoginForm({ onLogin }: { onLogin: (username: string, password: string) 
             </div>
           )}
           
-          <button
+          <Button
             type="submit"
             className="w-full bg-[#2E8B57] text-white py-3 rounded-xl hover:bg-[#267349] transition-colors font-medium"
           >
             Sign In
-          </button>
+          </Button>
         </form>
         
         <div className="mt-6 text-center text-sm text-muted-foreground">
@@ -359,7 +397,14 @@ export function AdminDashboard() {
     }
   }, []);
 
-  // Fetch products when 'Products' tab is active
+  // Fetch products once on login for dashboard stats
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchProducts();
+    }
+  }, [isAuthenticated]);
+
+  // Re-fetch products ONLY when products tab is clicked
   useEffect(() => {
     if (isAuthenticated && activeTab === "products") {
       fetchProducts();
@@ -418,7 +463,7 @@ export function AdminDashboard() {
       biodegradable: product.biodegradable,
       renewableEnergyUsed: product.renewableEnergyUsed,
       shippingCarbonOffset: product.shippingCarbonOffset,
-      imageBase64: product.imageBase64 // Correctly assign imageBase64
+      imageBase64: product.imageBase64, // Pass base64 for preview
     };
     setEditingProduct(formData);
     setIsModalOpen(true);
@@ -428,51 +473,47 @@ export function AdminDashboard() {
     if (window.confirm("Are you sure you want to delete this product?")) {
       try {
         await productService.deleteProduct(id);
+        // Optimistic UI update
         setProducts(prev => prev.filter(p => p.id !== id));
-      } catch (err) {
-        alert("Failed to delete product.");
+      } catch (err: any) {
+        alert(`Failed to delete product: ${err.message}`);
         console.error(err);
       }
     }
   };
   
   const handleFormSubmit = async (data: ProductFormData, file?: File) => {
-    try {
-      const productDataApi = {
-        name: data.name,
-        description: data.description,
-        price: parseFloat(data.price),
-        stockQuantity: parseInt(data.stockQuantity),
-        category: data.category,
-        brand: data.brand || undefined,
-        weightKg: data.weightKg ? parseFloat(data.weightKg) : undefined,
-        carbonImpact: data.carbonImpact ? parseFloat(data.carbonImpact) : undefined,
-        manufacturingLocation: data.manufacturingLocation || undefined,
-        ecoCertified: data.ecoCertified,
-        recyclable: data.recyclable,
-        biodegradable: data.biodegradable,
-        renewableEnergyUsed: data.renewableEnergyUsed,
-        shippingCarbonOffset: data.shippingCarbonOffset,
-        // sellerId and sellerName are required for create
+    const commonData = {
+      name: data.name,
+      description: data.description,
+      price: parseFloat(data.price),
+      stockQuantity: parseInt(data.stockQuantity),
+      category: data.category, // This is now guaranteed to not be ""
+      brand: data.brand || undefined,
+      weightKg: data.weightKg ? parseFloat(data.weightKg) : undefined,
+      carbonImpact: data.carbonImpact ? parseFloat(data.carbonImpact) : undefined,
+      manufacturingLocation: data.manufacturingLocation || undefined,
+      ecoCertified: data.ecoCertified,
+      recyclable: data.recyclable,
+      biodegradable: data.biodegradable,
+      renewableEnergyUsed: data.renewableEnergyUsed,
+      shippingCarbonOffset: data.shippingCarbonOffset,
+    };
+
+    if (data.id) {
+      // Update Product
+      await productService.updateProduct(data.id, commonData, file);
+    } else {
+      // Create Product
+      const createData = {
+        ...commonData,
         sellerId: 1, // Hardcoded sellerId as auth isn't implemented
         sellerName: "Admin Seller",
       };
-
-      if (data.id) {
-        // Update Product
-        await productService.updateProduct(data.id, productDataApi, file);
-      } else {
-        // Create Product
-        await productService.createProduct(productDataApi, file);
-      }
-      
-      setIsModalOpen(false);
-      fetchProducts(); // Refresh list
-      
-    } catch (err) {
-      console.error("Failed to save product:", err);
-      alert(`Error saving product: ${err}`);
+      await productService.createProduct(createData, file);
     }
+    
+    fetchProducts(); // Refresh list
   };
 
   const navigationItems = [
@@ -551,7 +592,13 @@ export function AdminDashboard() {
               <StatCard title="Total Revenue" value="$85,420" icon={DollarSign} trend="+12.5%" trendUp={true} />
               <StatCard title="Active Users" value="50,234" icon={Users} trend="+8.2%" trendUp={true} />
               <StatCard title="Total Orders" value="4,302" icon={ShoppingBag} trend="+23.1%" trendUp={true} />
-              <StatCard title="Products Sold" value={products.length} icon={Package} trend="+15.3%" trendUp={true} />
+              
+              <StatCard 
+                title="Products Listed" 
+                value={products.length} 
+                icon={Package} 
+                trend={isLoading ? "Loading..." : `${products.length} items`} 
+              />
             </div>
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -702,7 +749,7 @@ export function AdminDashboard() {
         </main>
       </div>
 
-      {/* Product Form Modal */}
+      {/* Product Form Modal (now a separate component) */}
       <ProductFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

@@ -1,35 +1,50 @@
 import { Product, ProductFilter } from "../types/product";
 
-const API_URL =
-  `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8080"}/api/products`;
+// Get the API base URL from environment variables, with a fallback
+const API_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') + '/api/products';
 
 /**
  * Type guard to check for a fetch error response.
  */
 interface ErrorResponse {
   message: string;
+  errors?: Record<string, string>; // For validation errors
   [key: string]: any;
 }
 function isErrorResponse(res: any): res is ErrorResponse {
-  return typeof res === 'object' && res !== null && 'message' in res;
+  return typeof res === 'object' && res !== null && ('message' in res || 'errors' in res);
 }
+
+/**
+ * Parses a JSON error response from the backend into a single string.
+ */
+async function getErrorString(response: Response): Promise<string> {
+  try {
+    const errorData = await response.json();
+    if (isErrorResponse(errorData)) {
+      if (errorData.errors) {
+        // Handle validation errors
+        return Object.values(errorData.errors).join(', ');
+      }
+      return errorData.message;
+    }
+  } catch (e) {
+    // Not a JSON error, just return status text
+  }
+  return response.statusText;
+}
+
 
 /**
  * Fetches all active products from the backend.
  * @returns A promise that resolves to an array of products.
  */
 export const getAllProducts = async (): Promise<Product[]> => {
-  try {
-    const response = await fetch(API_URL);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data: Product[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching all products:", error);
-    throw error;
+  const response = await fetch(API_URL);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json();
 };
 
 /**
@@ -38,17 +53,11 @@ export const getAllProducts = async (): Promise<Product[]> => {
  * @returns A promise that resolves to the product.
  */
 export const getProductById = async (id: string): Promise<Product> => {
-  try {
-    const response = await fetch(`${API_URL}/${id}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data: Product = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching product with ID ${id}:`, error);
-    throw error;
+  const response = await fetch(`${API_URL}/${id}`);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json();
 };
 
 /**
@@ -57,17 +66,11 @@ export const getProductById = async (id: string): Promise<Product> => {
  * @returns A promise that resolves to an array of alternative products.
  */
 export const getEcoAlternatives = async (id: string): Promise<Product[]> => {
-  try {
-    const response = await fetch(`${API_URL}/${id}/alternatives`);
-     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data: Product[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching alternatives for product ${id}:`, error);
-    throw error;
+  const response = await fetch(`${API_URL}/${id}/alternatives`);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json();
 }
 
 /**
@@ -76,17 +79,11 @@ export const getEcoAlternatives = async (id: string): Promise<Product[]> => {
  * @returns A promise that resolves to an array of matching products.
  */
 export const searchProducts = async (keyword: string): Promise<Product[]> => {
-  try {
-    const response = await fetch(`${API_URL}/search?keyword=${encodeURIComponent(keyword)}`);
-     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data: Product[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error searching products with keyword ${keyword}:`, error);
-    throw error;
+  const response = await fetch(`${API_URL}/search?keyword=${encodeURIComponent(keyword)}`);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json();
 }
 
 /**
@@ -95,138 +92,111 @@ export const searchProducts = async (keyword: string): Promise<Product[]> => {
  * @returns A promise that resolves to an array of matching products.
  */
 export const filterProducts = async (filter: ProductFilter): Promise<Product[]> => {
-  try {
-    const response = await fetch(`${API_URL}/filter`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(filter)
-    });
-     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data: Product[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error filtering products:", error);
-    throw error;
+  const response = await fetch(`${API_URL}/filter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filter)
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json();
 }
+
+/**
+ * This DTO matches the backend's `ProductRequestDTO`.
+ * We must send this in the JSON part.
+ */
+type ProductCreateApiDTO = {
+  name: string;
+  description: string;
+  price: number;
+  sellerId: number;
+  sellerName: string;
+  category: string;
+  stockQuantity: number;
+  brand?: string;
+  weightKg?: number;
+  carbonImpact?: number;
+  manufacturingLocation?: string;
+  ecoCertified: boolean;
+  recyclable: boolean;
+  biodegradable: boolean;
+  renewableEnergyUsed: boolean;
+  shippingCarbonOffset: boolean;
+};
 
 /**
  * Creates a new product.
  * Handles multipart/form-data upload as required by the backend.
- * @param productData The product data (excluding ID).
+ * @param productData The product data (matching ProductCreateApiDTO).
  * @param file The optional image file.
  * @returns A promise that resolves to the newly created product.
  */
-export const createProduct = async (
-  productData: {
-    name: string;
-    description: string;
-    price: number;
-    stockQuantity: number;
-    category: string;
+export const createProduct = async (productData: ProductCreateApiDTO, file?: File): Promise<Product> => {
+  const formData = new FormData();
+  
+  // 1. Append the product data as a JSON blob, as required by the @RequestPart("product")
+  formData.append('product', new Blob([JSON.stringify(productData)], {
+    type: "application/json"
+  }));
 
-    subCategory?: string;
-    brand?: string;
-    weightKg?: number;
-    dimensions?: string;
-    manufacturingLocation?: string;
-
-    carbonImpact?: number;
-    ecoCertified?: boolean;
-    ecoCertificationDetails?: string;
-    recyclable?: boolean;
-    biodegradable?: boolean;
-    renewableEnergyUsed?: boolean;
-    shippingCarbonOffset?: boolean;
-
-    sellerId: number;
-    sellerName: string;
-
-    // IMPORTANT: These two must be optional
-    active?: boolean;
-    verified?: boolean;
-  },
-  file?: File
-): Promise<Product> => {
-
-  try {
-    const formData = new FormData();
-    
-    // 1. Append the product data as a JSON blob
-    formData.append('product', new Blob([JSON.stringify(productData)], {
-      type: "application/json"
-    }));
-
-    // 2. Append the file if it exists
-    if (file) {
-      formData.append('file', file);
-    }
-
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      body: formData,
-      // Do not set Content-Type header; browser will set it with boundary
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      if (isErrorResponse(errorData)) {
-         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data: Product = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error creating product:", error);
-    throw error;
+  // 2. Append the file if it exists, as required by @RequestParam("file")
+  if (file) {
+    formData.append('file', file);
   }
+
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    body: formData,
+    // Do NOT set Content-Type; the browser auto-sets it for multipart/form-data with the correct boundary
+  });
+
+  if (!response.ok) {
+    const errorMsg = await getErrorString(response);
+    throw new Error(errorMsg);
+  }
+
+  return response.json();
 };
+
+/**
+ * This DTO matches the backend's `ProductUpdateDTO` (which is all-partial).
+ */
+type ProductUpdateApiDTO = Partial<Omit<ProductCreateApiDTO, 'sellerId' | 'sellerName'>>;
 
 /**
  * Updates an existing product.
  * Handles multipart/form-data upload for partial updates.
  * @param id The ID of the product to update.
- * @param productData The partial product data to update.
+ * @param productData The partial product data to update (matching ProductUpdateApiDTO).
  * @param file The optional new image file.
  * @returns A promise that resolves to the updated product.
  */
-export const updateProduct = async (id: number | string, productData: Partial<Product>, file?: File): Promise<Product> => {
-  try {
-    const formData = new FormData();
+export const updateProduct = async (id: number, productData: ProductUpdateApiDTO, file?: File): Promise<Product> => {
+  const formData = new FormData();
 
-    // 1. Append the partial product data as a JSON blob
-    formData.append('product', new Blob([JSON.stringify(productData)], {
-      type: "application/json"
-    }));
+  // 1. Append the partial product data as a JSON blob
+  formData.append('product', new Blob([JSON.stringify(productData)], {
+    type: "application/json"
+  }));
 
-    // 2. Append the file if it exists
-    if (file) {
-      formData.append('file', file);
-    }
-
-    const response = await fetch(`${API_URL}/${id}`, {
-      method: 'PATCH',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-       if (isErrorResponse(errorData)) {
-         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data: Product = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error updating product with ID ${id}:`, error);
-    throw error;
+  // 2. Append the file if it exists
+  if (file) {
+    formData.append('file', file);
   }
+
+  const response = await fetch(`${API_URL}/${id}`, {
+    method: 'PATCH',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorMsg = await getErrorString(response);
+    throw new Error(errorMsg);
+  }
+
+  return response.json();
 };
 
 /**
@@ -234,17 +204,13 @@ export const updateProduct = async (id: number | string, productData: Partial<Pr
  * @param id The ID of the product to delete.
  * @returns A promise that resolves when the deletion is successful.
  */
-export const deleteProduct = async (id: number | string): Promise<void> => {
-  try {
-    const response = await fetch(`${API_URL}/${id}`, {
-      method: 'DELETE',
-    });
+export const deleteProduct = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_URL}/${id}`, {
+    method: 'DELETE',
+  });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-  } catch (error) {
-    console.error(`Error deleting product with ID ${id}:`, error);
-    throw error;
+  if (!response.ok) {
+    const errorMsg = await getErrorString(response);
+    throw new Error(errorMsg);
   }
 };
